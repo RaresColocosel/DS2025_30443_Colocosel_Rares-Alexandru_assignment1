@@ -1,0 +1,17 @@
+entryPoints:
+  web:
+    address: ":80"
+  traefik:
+    address: ":8080"
+
+
+providers:
+  docker:
+    exposedByDefault: false
+  file:
+    filename: /etc/traefik/traefik-dynamic.yml
+    watch: true
+
+api:
+  insecure: true
+  dashboard: true

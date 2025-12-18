@@ -1,0 +1,173 @@
+version: "3.9"
+
+services:
+  # =======================
+  # Reverse proxy (Traefik)
+  # =======================
+  reverse-proxy:
+    image: traefik:v3.2
+    container_name: traefik
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.file.filename=/etc/traefik/traefik-dynamic.yml
+      - --entrypoints.web.address=:80
+      - --log.level=DEBUG
+    ports:
+      - "80:80"       # HTTP (API via /api)
+      - "8081:8080"   # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic/traefik-dynamic.yml:/etc/traefik/traefik-dynamic.yml:ro
+    networks:
+      - ems-net
+
+  # =======================
+  # Backend services
+  # =======================
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ems-backend:latest
+    container_name: auth-service
+    environment:
+      # ---------- AUTH DB ----------
+      AUTH_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/auth_db
+      AUTH_DATASOURCE_USERNAME: auth_user
+      AUTH_DATASOURCE_PASSWORD: auth_pass
+
+      # ---------- USER DB ----------
+      USER_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_db
+      USER_DATASOURCE_USERNAME: user_service
+      USER_DATASOURCE_PASSWORD: user_pass
+
+      # ---------- DEVICE DB ----------
+      DEVICE_DATASOURCE_URL: jdbc:postgresql://device-db:5432/device_db
+      DEVICE_DATASOURCE_USERNAME: device_service
+      DEVICE_DATASOURCE_PASSWORD: device_pass
+
+      # ---------- JWT ----------
+      APP_JWT_SECRET: ZkA3PzM3s9vC1xQ8rT5bN2yL7wR0kE6uHfG2pQ9sV4yT1mC8aR6dW3qL9zX5tB2
+      APP_JWT_ISSUER: ems-auth
+      APP_JWT_EXPIRATION_MINUTES: 120
+    depends_on:
+      - auth-db
+      - user-db
+      - device-db
+    networks:
+      - ems-net
+
+  user-service:
+    image: ems-backend:latest   # same image, different container
+    container_name: user-service
+    environment:
+      AUTH_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/auth_db
+      AUTH_DATASOURCE_USERNAME: auth_user
+      AUTH_DATASOURCE_PASSWORD: auth_pass
+
+      USER_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_db
+      USER_DATASOURCE_USERNAME: user_service
+      USER_DATASOURCE_PASSWORD: user_pass
+
+      DEVICE_DATASOURCE_URL: jdbc:postgresql://device-db:5432/device_db
+      DEVICE_DATASOURCE_USERNAME: device_service
+      DEVICE_DATASOURCE_PASSWORD: device_pass
+
+      APP_JWT_SECRET: ZkA3PzM3s9vC1xQ8rT5bN2yL7wR0kE6uHfG2pQ9sV4yT1mC8aR6dW3qL9zX5tB2
+      APP_JWT_ISSUER: ems-auth
+      APP_JWT_EXPIRATION_MINUTES: 120
+    depends_on:
+      - auth-db
+      - user-db
+      - device-db
+    networks:
+      - ems-net
+
+  device-service:
+    image: ems-backend:latest
+    container_name: device-service
+    environment:
+      AUTH_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/auth_db
+      AUTH_DATASOURCE_USERNAME: auth_user
+      AUTH_DATASOURCE_PASSWORD: auth_pass
+
+      USER_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_db
+      USER_DATASOURCE_USERNAME: user_service
+      USER_DATASOURCE_PASSWORD: user_pass
+
+      DEVICE_DATASOURCE_URL: jdbc:postgresql://device-db:5432/device_db
+      DEVICE_DATASOURCE_USERNAME: device_service
+      DEVICE_DATASOURCE_PASSWORD: device_pass
+
+      APP_JWT_SECRET: ZkA3PzM3s9vC1xQ8rT5bN2yL7wR0kE6uHfG2pQ9sV4yT1mC8aR6dW3qL9zX5tB2
+      APP_JWT_ISSUER: ems-auth
+      APP_JWT_EXPIRATION_MINUTES: 120
+    depends_on:
+      - auth-db
+      - user-db
+      - device-db
+    networks:
+      - ems-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ./Dockerfile
+    image: ems-frontend:latest
+    container_name: frontend
+    depends_on:
+      - auth-service
+      - user-service
+      - device-service
+    networks:
+      - ems-net
+
+  # =======================
+  # Databases (latest slim/alpine)
+  # =======================
+  auth-db:
+    image: postgres:latest     # latest Postgres on Alpine (slim)
+    container_name: auth-db
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+    volumes:
+      - auth_data:/var/lib/postgresql
+    networks:
+      - ems-net
+
+  user-db:
+    image: postgres:latest
+    container_name: user-db
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: user_service
+      POSTGRES_PASSWORD: user_pass
+    volumes:
+      - user_data:/var/lib/postgresql
+    networks:
+      - ems-net
+
+  device-db:
+    image: postgres:latest
+    container_name: device-db
+    environment:
+      POSTGRES_DB: device_db
+      POSTGRES_USER: device_service
+      POSTGRES_PASSWORD: device_pass
+    volumes:
+      - device_data:/var/lib/postgresql
+    networks:
+      - ems-net
+
+volumes:
+  auth_data:
+  user_data:
+  device_data:
+
+networks:
+  ems-net:
+    driver: bridge

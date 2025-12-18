@@ -1,0 +1,68 @@
+http:
+  routers:
+
+    frontend-web:
+      rule: "Host(`localhost`) && PathPrefix(`/`)"
+      entryPoints:
+        - web
+      priority: 1
+      service: frontend-svc
+
+    auth-api:
+      rule: "Host(`localhost`) && PathPrefix(`/api/auth`)"
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api-prefix
+      service: auth-svc
+
+    user-api:
+      rule: "Host(`localhost`) && (PathPrefix(`/api/users`) || PathPrefix(`/api/me`))"
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api-prefix
+      service: user-svc
+
+    client-router:
+      rule: "Host(`localhost`) &&  PathPrefix(`/api/client`)"
+      entryPoints:
+        - web
+      service: user-svc
+      middlewares:
+        - strip-api-prefix
+
+    device-api:
+      rule: "Host(`localhost`) && PathPrefix(`/api/devices`)"
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api-prefix
+      service: device-svc
+
+  middlewares:
+    strip-api-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api"
+
+  services:
+    auth-svc:
+      loadBalancer:
+        servers:
+          - url: "http://auth-service:8080"
+
+    user-svc:
+      loadBalancer:
+        servers:
+          - url: "http://user-service:8080"
+
+    device-svc:
+      loadBalancer:
+        servers:
+          - url: "http://device-service:8080"
+
+    frontend-svc:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:5173"
