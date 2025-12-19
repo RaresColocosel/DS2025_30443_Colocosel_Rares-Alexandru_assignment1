@@ -1,13 +1,14 @@
 http:
   routers:
-
+    # 1. Frontend Router (Catch-all except /api)
     frontend-web:
-      rule: "Host(`localhost`) && PathPrefix(`/`)"
+      rule: "Host(`localhost`) && PathPrefix(`/`) && !PathPrefix(`/api`)"
       entryPoints:
         - web
       priority: 1
       service: frontend-svc
 
+    # 2. Auth API
     auth-api:
       rule: "Host(`localhost`) && PathPrefix(`/api/auth`)"
       entryPoints:
@@ -16,29 +17,32 @@ http:
         - strip-api-prefix
       service: auth-svc
 
+    # 3. User API
     user-api:
-      rule: "Host(`localhost`) && (PathPrefix(`/api/users`) || PathPrefix(`/api/me`))"
+      rule: "Host(`localhost`) && (PathPrefix(`/api/users`) || PathPrefix(`/api/me`) || PathPrefix(`/api/client`))"
       entryPoints:
         - web
       middlewares:
         - strip-api-prefix
       service: user-svc
 
-    client-router:
-      rule: "Host(`localhost`) &&  PathPrefix(`/api/client`)"
-      entryPoints:
-        - web
-      service: user-svc
-      middlewares:
-        - strip-api-prefix
-
+    # 4. Device API
     device-api:
-      rule: "Host(`localhost`) && PathPrefix(`/api/devices`)"
+      rule: "Host(`localhost`) && (PathPrefix(`/api/devices`) || PathPrefix(`/api/assignments`))"
       entryPoints:
         - web
       middlewares:
         - strip-api-prefix
       service: device-svc
+
+    # 5. Monitoring API (Routes /api/monitoring -> /monitoring on backend)
+    monitoring-api:
+      rule: "Host(`localhost`) && PathPrefix(`/api/monitoring`)"
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api-prefix
+      service: monitoring-svc
 
   middlewares:
     strip-api-prefix:
@@ -51,17 +55,18 @@ http:
       loadBalancer:
         servers:
           - url: "http://auth-service:8080"
-
     user-svc:
       loadBalancer:
         servers:
           - url: "http://user-service:8080"
-
     device-svc:
       loadBalancer:
         servers:
           - url: "http://device-service:8080"
-
+    monitoring-svc:
+      loadBalancer:
+        servers:
+          - url: "http://monitoring-service:8080"
     frontend-svc:
       loadBalancer:
         servers:

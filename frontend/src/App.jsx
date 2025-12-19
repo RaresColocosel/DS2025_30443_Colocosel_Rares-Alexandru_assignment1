@@ -1,54 +1,51 @@
-import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useAuth } from "./auth/AuthContext";
-
-import Navbar from "./components/Navbar";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import MonitoringPage from "./pages/admin/MonitoringPage"; // Import new page
 import ClientDashboard from "./pages/client/ClientDashboard";
 import PrivateRoute from "./auth/PrivateRoute";
-import "./App.css";
 
-export default function App() {
-    const { user, isAuthenticated } = useAuth();
-
-    const defaultRedirect = () => {
-        if (!isAuthenticated) return <Navigate to="/login" replace />;
-        if (user?.role === "ADMIN") return <Navigate to="/admin" replace />;
-        if (user?.role === "CLIENT") return <Navigate to="/client" replace />;
-        return <Navigate to="/login" replace />;
-    };
-
+function App() {
     return (
-        <>
-            <Navbar />
-            <Routes>
-                <Route path="/" element={defaultRedirect()} />
+        <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
 
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
+            {/* Admin Dashboard */}
+            <Route
+                path="/admin"
+                element={
+                    <PrivateRoute role="ADMIN">
+                        <AdminDashboard />
+                    </PrivateRoute>
+                }
+            />
 
-                <Route
-                    path="/admin"
-                    element={
-                        <PrivateRoute roles={["ADMIN"]}>
-                            <AdminDashboard />
-                        </PrivateRoute>
-                    }
-                />
+            {/* Shared Route for Monitoring */}
+            <Route
+                path="/monitoring"
+                element={
+                    <PrivateRoute> {/* Empty role = accessible to any authenticated user */}
+                        <MonitoringPage />
+                    </PrivateRoute>
+                }
+            />
 
-                <Route
-                    path="/client"
-                    element={
-                        <PrivateRoute roles={["CLIENT"]}>
-                            <ClientDashboard />
-                        </PrivateRoute>
-                    }
-                />
+            {/* Client Dashboard */}
+            <Route
+                path="/client"
+                element={
+                    <PrivateRoute role="CLIENT">
+                        <ClientDashboard />
+                    </PrivateRoute>
+                }
+            />
 
-                <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-        </>
+
+            <Route path="*" element={<Navigate to="/login" />} />
+        </Routes>
     );
 }
+
+export default App;

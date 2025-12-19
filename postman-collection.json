@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "b93e5b2f-aaaa-bbbb-cccc-emsbackend",
-    "name": "EMS Backend",
+    "name": "EMS Backend (Assignment 2)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -96,8 +96,10 @@
                 "exec": [
                   "if (pm.response.code === 200) {",
                   "  const json = pm.response.json();",
-                  "  if (json && json.token) {",
-                  "    pm.collectionVariables.set('jwtToken', json.token);",
+                  "  // Adjust key if your backend returns 'accessToken' instead of 'token'",
+                  "  const token = json.token || json.accessToken;",
+                  "  if (token) {",
+                  "    pm.collectionVariables.set('jwtToken', token);",
                   "  }",
                   "}",
                   "pm.test('Admin login succeeded', function () {",
@@ -142,8 +144,9 @@
                 "exec": [
                   "if (pm.response.code === 200) {",
                   "  const json = pm.response.json();",
-                  "  if (json && json.token) {",
-                  "    pm.collectionVariables.set('jwtToken', json.token);",
+                  "  const token = json.token || json.accessToken;",
+                  "  if (token) {",
+                  "    pm.collectionVariables.set('jwtToken', token);",
                   "  }",
                   "}",
                   "pm.test('Client login succeeded', function () {",
@@ -417,6 +420,65 @@
                 "devices",
                 "1",
                 "assign"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Monitoring (ADMIN)",
+      "item": [
+        {
+          "name": "Get consumption logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/monitoring/consumption",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "monitoring",
+                "consumption"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter logs by Device ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwtToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/monitoring/consumption?deviceId=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "monitoring",
+                "consumption"
+              ],
+              "query": [
+                {
+                  "key": "deviceId",
+                  "value": "1"
+                }
               ]
             }
           },

@@ -26,29 +26,54 @@ services:
   # =======================
   # Backend services
   # =======================
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"   # App connection
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: [ "CMD", "rabbitmqctl", "status" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ems-net
+
+  # AUTH SERVICE
   auth-service:
     build:
       context: .
       dockerfile: Dockerfile
     image: ems-backend:latest
     container_name: auth-service
-    environment:
-      # ---------- AUTH DB ----------
+    environment: &backend_env
+      # Database Connections
       AUTH_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/auth_db
       AUTH_DATASOURCE_USERNAME: auth_user
       AUTH_DATASOURCE_PASSWORD: auth_pass
 
-      # ---------- USER DB ----------
       USER_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_db
       USER_DATASOURCE_USERNAME: user_service
       USER_DATASOURCE_PASSWORD: user_pass
 
-      # ---------- DEVICE DB ----------
       DEVICE_DATASOURCE_URL: jdbc:postgresql://device-db:5432/device_db
       DEVICE_DATASOURCE_USERNAME: device_service
       DEVICE_DATASOURCE_PASSWORD: device_pass
 
-      # ---------- JWT ----------
+      # Monitoring DB Connection
+      MONITORING_DATASOURCE_URL: jdbc:postgresql://monitoring-db:5432/monitoring_db
+      MONITORING_DATASOURCE_USERNAME: monitor_user
+      MONITORING_DATASOURCE_PASSWORD: monitor_pass
+
+      # RabbitMQ
+      SPRING_RABBITMQ_HOST: rabbitmq
+
+      # JWT
       APP_JWT_SECRET: ZkA3PzM3s9vC1xQ8rT5bN2yL7wR0kE6uHfG2pQ9sV4yT1mC8aR6dW3qL9zX5tB2
       APP_JWT_ISSUER: ems-auth
       APP_JWT_EXPIRATION_MINUTES: 120
@@ -56,60 +81,67 @@ services:
       - auth-db
       - user-db
       - device-db
+      - monitoring-db
+      - rabbitmq
     networks:
       - ems-net
 
+  # USER SERVICE
   user-service:
-    image: ems-backend:latest   # same image, different container
+    image: ems-backend:latest
     container_name: user-service
-    environment:
-      AUTH_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/auth_db
-      AUTH_DATASOURCE_USERNAME: auth_user
-      AUTH_DATASOURCE_PASSWORD: auth_pass
-
-      USER_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_db
-      USER_DATASOURCE_USERNAME: user_service
-      USER_DATASOURCE_PASSWORD: user_pass
-
-      DEVICE_DATASOURCE_URL: jdbc:postgresql://device-db:5432/device_db
-      DEVICE_DATASOURCE_USERNAME: device_service
-      DEVICE_DATASOURCE_PASSWORD: device_pass
-
-      APP_JWT_SECRET: ZkA3PzM3s9vC1xQ8rT5bN2yL7wR0kE6uHfG2pQ9sV4yT1mC8aR6dW3qL9zX5tB2
-      APP_JWT_ISSUER: ems-auth
-      APP_JWT_EXPIRATION_MINUTES: 120
+    environment: *backend_env # Reuses the environment block defined above
     depends_on:
       - auth-db
       - user-db
       - device-db
+      - monitoring-db
+      - rabbitmq
     networks:
       - ems-net
 
+  # DEVICE SERVICE (Handles Devices & API requests)
   device-service:
     image: ems-backend:latest
     container_name: device-service
-    environment:
-      AUTH_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/auth_db
-      AUTH_DATASOURCE_USERNAME: auth_user
-      AUTH_DATASOURCE_PASSWORD: auth_pass
-
-      USER_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_db
-      USER_DATASOURCE_USERNAME: user_service
-      USER_DATASOURCE_PASSWORD: user_pass
-
-      DEVICE_DATASOURCE_URL: jdbc:postgresql://device-db:5432/device_db
-      DEVICE_DATASOURCE_USERNAME: device_service
-      DEVICE_DATASOURCE_PASSWORD: device_pass
-
-      APP_JWT_SECRET: ZkA3PzM3s9vC1xQ8rT5bN2yL7wR0kE6uHfG2pQ9sV4yT1mC8aR6dW3qL9zX5tB2
-      APP_JWT_ISSUER: ems-auth
-      APP_JWT_EXPIRATION_MINUTES: 120
+    environment: *backend_env
     depends_on:
       - auth-db
       - user-db
       - device-db
+      - monitoring-db
+      - rabbitmq
     networks:
       - ems-net
+
+  # MONITORING SERVICE (Consumer)
+  # Acts as a separate logical service for processing queue messages
+  monitoring-service:
+    image: ems-backend:latest
+    container_name: monitoring-service
+    environment: *backend_env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      monitoring-db:
+        condition: service_started
+    networks:
+      - ems-net
+
+  # DEVICE DATA SIMULATOR
+  # NOTE: As per assignment, this is a "standalone application".
+  # Run this LOCALLY via IntelliJ (Right Click Main.java -> Run)
+  # so it can connect to 'localhost'.
+  # Running it in Docker requires a different entrypoint configuration.
+  # device-data-simulator:
+  #   image: ems-backend:latest
+  #   container_name: device-data-simulator
+  #   command: java -cp app.jar device_data_simulator.Main
+  #   depends_on:
+  #     - rabbitmq
+  #     - device-service
+  #   networks:
+  #     - ems-net
 
   frontend:
     build:
@@ -117,6 +149,8 @@ services:
       dockerfile: ./Dockerfile
     image: ems-frontend:latest
     container_name: frontend
+    ports:
+      - "5173:5173" # Optional: if you want to access directly bypassing traefik for debug
     depends_on:
       - auth-service
       - user-service
@@ -125,11 +159,13 @@ services:
       - ems-net
 
   # =======================
-  # Databases (latest slim/alpine)
+  # Databases
   # =======================
   auth-db:
-    image: postgres:latest     # latest Postgres on Alpine (slim)
+    image: postgres:latest
     container_name: auth-db
+    ports:
+      - "5433:5432" # Mapped to host 5433 as per application.properties
     environment:
       POSTGRES_DB: auth_db
       POSTGRES_USER: auth_user
@@ -142,6 +178,8 @@ services:
   user-db:
     image: postgres:latest
     container_name: user-db
+    ports:
+      - "5434:5432" # Mapped to host 5434
     environment:
       POSTGRES_DB: user_db
       POSTGRES_USER: user_service
@@ -154,6 +192,8 @@ services:
   device-db:
     image: postgres:latest
     container_name: device-db
+    ports:
+      - "5435:5432" # Mapped to host 5435
     environment:
       POSTGRES_DB: device_db
       POSTGRES_USER: device_service
@@ -163,10 +203,25 @@ services:
     networks:
       - ems-net
 
+  monitoring-db:
+    image: postgres:latest
+    container_name: monitoring-db
+    ports:
+      - "5436:5432" # Mapped to host 5436
+    environment:
+      POSTGRES_DB: monitoring_db
+      POSTGRES_USER: monitor_user
+      POSTGRES_PASSWORD: monitor_pass
+    volumes:
+      - monitoring_data:/var/lib/postgresql
+    networks:
+      - ems-net
+
 volumes:
   auth_data:
   user_data:
   device_data:
+  monitoring_data:
 
 networks:
   ems-net:

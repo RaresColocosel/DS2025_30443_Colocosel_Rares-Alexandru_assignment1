@@ -3,37 +3,25 @@ import { createContext, useContext, useEffect, useState } from "react";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-    const [token, setToken] = useState(null);
-    const [role, setRole] = useState(null);
-    const [username, setUsername] = useState(null);
-
-    useEffect(() => {
+    // 1. Initialize state synchronously from localStorage
+    const [authData, setAuthData] = useState(() => {
         const stored = localStorage.getItem("auth");
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            setToken(parsed.token);
-            setRole(parsed.role);
-            setUsername(parsed.username);
-        }
-    }, []);
+        return stored ? JSON.parse(stored) : { token: null, role: null, username: null };
+    });
 
     const login = (jwtToken, userRole, userName) => {
-        setToken(jwtToken);
-        setRole(userRole);
-        setUsername(userName);
-
-        localStorage.setItem(
-            "auth",
-            JSON.stringify({ token: jwtToken, role: userRole, username: userName })
-        );
+        const newData = { token: jwtToken, role: userRole, username: userName };
+        setAuthData(newData);
+        localStorage.setItem("auth", JSON.stringify(newData));
     };
 
     const logout = () => {
-        setToken(null);
-        setRole(null);
-        setUsername(null);
+        setAuthData({ token: null, role: null, username: null });
         localStorage.removeItem("auth");
     };
+
+    // 2. Destructure for easier use in the value object
+    const { token, role, username } = authData;
 
     return (
         <AuthContext.Provider value={{ token, role, username, login, logout }}>

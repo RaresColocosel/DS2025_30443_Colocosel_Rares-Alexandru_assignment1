@@ -5,9 +5,12 @@ import com.ems.auth.repositories.CredentialRepository;
 import com.ems.user.dtos.UpdateProfileRequest;
 import com.ems.user.dtos.UserDTO;
 import com.ems.user.dtos.UserDetailsDTO;
+import com.ems.user.dtos.UserSyncDTO; // Ensure this DTO exists in your package
 import com.ems.user.dtos.builders.UserBuilder;
 import com.ems.user.entities.User;
 import com.ems.user.repositories.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,13 +23,18 @@ public class UserService {
   private final UserRepository userRepository;
   private final CredentialRepository credentialRepository;
   private final PasswordEncoder passwordEncoder;
+  private final RabbitTemplate rabbitTemplate; // Inject RabbitTemplate
+  private final ObjectMapper objectMapper;     // Inject ObjectMapper for JSON
 
   public UserService(UserRepository userRepository,
                      CredentialRepository credentialRepository,
-                     PasswordEncoder passwordEncoder) {
+                     PasswordEncoder passwordEncoder,
+                     RabbitTemplate rabbitTemplate) {
     this.userRepository = userRepository;
     this.credentialRepository = credentialRepository;
     this.passwordEncoder = passwordEncoder;
+    this.rabbitTemplate = rabbitTemplate;
+    this.objectMapper = new ObjectMapper();
   }
 
   // ========================
@@ -73,6 +81,9 @@ public class UserService {
     credential.setRole(role);
     credentialRepository.save(credential);
 
+    // --- SYNC: Publish CREATE Event ---
+    syncUser(user, "CREATE");
+
     return UserBuilder.toDTO(user);
   }
 
@@ -82,8 +93,8 @@ public class UserService {
             .orElseThrow(() -> new IllegalArgumentException("User not found: " + id));
 
     String oldUsername = user.getUsername();
-
     String newUsername = dto.getUsername();
+
     if (!oldUsername.equals(newUsername)) {
       // ensure new username not already taken
       if (userRepository.existsByUsername(newUsername) ||
@@ -114,6 +125,9 @@ public class UserService {
 
     credentialRepository.save(credential);
 
+    // --- SYNC: Publish UPDATE Event ---
+    syncUser(user, "UPDATE");
+
     return UserBuilder.toDTO(user);
   }
 
@@ -129,6 +143,9 @@ public class UserService {
             .ifPresent(credentialRepository::delete);
 
     userRepository.delete(user);
+
+    // --- SYNC: Publish DELETE Event ---
+    syncUser(user, "DELETE");
   }
 
   // ===================================
@@ -157,6 +174,9 @@ public class UserService {
       credentialRepository.save(credential);
     }
 
+    // --- SYNC: Publish UPDATE Event (Profile Update) ---
+    syncUser(user, "UPDATE");
+
     return UserBuilder.toDetails(user);
   }
 
@@ -165,5 +185,24 @@ public class UserService {
       return "CLIENT";
     }
     return role.toUpperCase();
+  }
+
+  // ===================================
+  // SYNCHRONIZATION HELPER
+  // ===================================
+  private void syncUser(User user, String action) {
+    try {
+      UserSyncDTO dto = new UserSyncDTO(user.getId(), user.getUsername(), action);
+      String jsonMessage = objectMapper.writeValueAsString(dto);
+
+      // Routing Key: user.create, user.update, user.delete
+      String routingKey = "user." + action.toLowerCase();
+
+      rabbitTemplate.convertAndSend("user_sync_exchange", routingKey, jsonMessage);
+
+      System.out.println(" [User Service] Sent Sync: " + routingKey + " -> " + jsonMessage);
+    } catch (Exception e) {
+      System.err.println(" [User Service] Failed to sync user: " + e.getMessage());
+    }
   }
 }

@@ -2,7 +2,6 @@ package com.ems.common.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -27,39 +26,25 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                    // -----------------------------------------------------------------
-                    //  PUBLIC AUTH ENDPOINTS  (with AND without /api prefix)
-                    // -----------------------------------------------------------------
-                    .requestMatchers(
-                            "/auth/login",
-                            "/auth/register-client",
-                            "/auth/register",
-                            "/api/auth/login",
-                            "/api/auth/register-client",
-                            "/api/auth/register"
-                    ).permitAll()
+                    // Public Auth
+                    .requestMatchers("/auth/**", "/api/auth/**").permitAll()
 
-                    // -----------------------------------------------------------------
-                    //  ADMIN-ONLY ENDPOINTS
-                    // -----------------------------------------------------------------
+                    // ADMIN Routes (Users, Devices, Assignments, Monitoring)
                     .requestMatchers(
-                            "/users/**",
-                            "/devices/**",
-                            "/assignments/**",
-                            "/api/users/**",
-                            "/api/devices/**",
-                            "/api/assignments/**"
+                            "/users/**", "/api/users/**",
+                            "/devices/**", "/api/devices/**",
+                            "/assignments/**", "/api/assignments/**"
                     ).hasAuthority("ADMIN")
 
-                    // -----------------------------------------------------------------
-                    //  CLIENT-ONLY ENDPOINTS
-                    // -----------------------------------------------------------------
+                    // Client Routes
                     .requestMatchers("/client/**", "/api/client/**").hasAuthority("CLIENT")
 
-                    // “My profile / my devices” – any authenticated user
-                    .requestMatchers("/me/**", "/api/me/**").permitAll()
+                    // Shared Routes
+                    .requestMatchers(
+                            "/me/**", "/api/me/**",
+                            "/monitoring/**", "/api/monitoring/**" // <--- Accessible to everyone logged in
+                    ).authenticated()
 
-                    // everything else: authenticated
                     .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
